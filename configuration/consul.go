@@ -1,17 +1,23 @@
 package configuration
 
 import (
+	"context"
 	"fmt"
 	"github.com/hashicorp/consul/api"
+	"time"
+
+	//"time"
+	"github.com/Sirupsen/logrus"
 )
 
 type consul struct {
 	client *api.Client
+	//watchValue 		chan map[string][]byte
 }
 
-func NewConsul() *consul {
+func NewConsul(addr string) *consul {
 	config := api.DefaultConfig()
-	config.Address = "192.168.9.165:8500"
+	config.Address = addr
 	client, err := api.NewClient(config)
 	if err != nil {
 		fmt.Println("init consul client error", err)
@@ -71,25 +77,44 @@ func (c *consul) List(prefix string) (map[string][]byte, uint64, error) {
 	return kvpairs, queryMeta.LastIndex, nil
 }
 
-func (c *consul) Watch(key string, waitIndex uint64) ([]byte, uint64, error) {
+func (c *consul) WatchLoop(ctx context.Context, key string, waitTime time.Duration, watchValue chan<- map[string][]byte) {
+	//refreshTimer := time.NewTimer(c.refreshInterval)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		Value := c.watch(key, waitTime)
+		if Value == nil {
+			fmt.Println(waitTime, "no change......")
+			continue
+		} else {
+			watchValue <- Value
+		}
+	}
+}
+
+func (c *consul) watch(key string, waitTime time.Duration) map[string][]byte {
+	_, lastIndex, err := c.List(key)
+	if err != nil {
+		logrus.WithError(err).Errorf("consul err. key=%s ", key)
+	}
 	kv := c.client.KV()
 	opts := &api.QueryOptions{
-		WaitIndex: waitIndex,
-		//WaitTime: time.Minute,
+		WaitIndex: lastIndex,
+		WaitTime:  waitTime,
 	}
-	pair, queryMeta, err := kv.Get(key, opts)
-	if err != nil {
-		return nil, 0, err
+	pairs, queryMeta, err := kv.List(key, opts)
+	if pairs == nil && queryMeta == nil {
+		logrus.WithError(err).Errorf("consul err. key=%s ", key)
 	}
-	var value []byte
-	var lastIndex uint64
-	if pair != nil {
-		value = pair.Value
-	} else {
-		value = nil
+	if lastIndex == queryMeta.LastIndex {
+		return nil
 	}
-	if queryMeta != nil {
-		lastIndex = queryMeta.LastIndex
+	kvpairs := make(map[string][]byte)
+	for _, pair := range pairs {
+		kvpairs[pair.Key] = pair.Value
 	}
-	return value, lastIndex, nil
+	return kvpairs
 }
