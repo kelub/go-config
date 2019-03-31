@@ -15,7 +15,7 @@ type consul struct {
 	//watchValue 		chan map[string][]byte
 }
 
-func NewConsul(addr string) *consul {
+func NewConsul(addr string) Configer {
 	config := api.DefaultConfig()
 	config.Address = addr
 	client, err := api.NewClient(config)
