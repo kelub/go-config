@@ -1,0 +1,8 @@
+.vscode/
+log/
+*.so
+debug.test
+*.db
+bin/
+.idea/
+*.tar.gz
