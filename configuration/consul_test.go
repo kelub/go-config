@@ -3,7 +3,6 @@ package configuration
 import (
 	"fmt"
 	"testing"
-	"time"
 )
 
 func Test_Put(t *testing.T) {
@@ -64,12 +63,12 @@ func Test_List(t *testing.T) {
 	fmt.Println("err: ", err)
 }
 
-func Test_watch(t *testing.T) {
-	c := NewConsul("127.0.0.1:8500")
-	if c == nil {
-		t.FailNow()
-	}
-	key := "test/abc/a"
-	v := c.watch(key, time.Second*60)
-	fmt.Println("value: ", string(v[key]))
-}
+//func Test_watch(t *testing.T) {
+//	c := NewConsul("127.0.0.1:8500")
+//	if c == nil {
+//		t.FailNow()
+//	}
+//	key := "test/abc/a"
+//	v := c.watch(key, time.Second*60)
+//	fmt.Println("value: ", string(v[key]))
+//}

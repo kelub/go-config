@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	conf "go-config/configuration"
+	conf "go-config/client"
 	"sync"
 	"time"
 )

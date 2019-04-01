@@ -1,13 +1,8 @@
 package configuration
 
 import (
-	"context"
 	"fmt"
 	"github.com/hashicorp/consul/api"
-	"time"
-
-	//"time"
-	"github.com/Sirupsen/logrus"
 )
 
 type consul struct {
@@ -77,44 +72,56 @@ func (c *consul) List(prefix string) (map[string][]byte, uint64, error) {
 	return kvpairs, queryMeta.LastIndex, nil
 }
 
-func (c *consul) WatchLoop(ctx context.Context, key string, waitTime time.Duration, watchValue chan<- map[string][]byte) {
-	//refreshTimer := time.NewTimer(c.refreshInterval)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		Value := c.watch(key, waitTime)
-		if Value == nil {
-			fmt.Println(waitTime, "no change......")
-			continue
-		} else {
-			watchValue <- Value
-		}
-	}
+func (c *consul) Delete(key string) error {
+	kv := c.client.KV()
+	_, err := kv.Delete(key, &api.WriteOptions{})
+	return err
 }
 
-func (c *consul) watch(key string, waitTime time.Duration) map[string][]byte {
-	_, lastIndex, err := c.List(key)
-	if err != nil {
-		logrus.WithError(err).Errorf("consul err. key=%s ", key)
-	}
+func (c *consul) DeleteTree(prefix string) error {
 	kv := c.client.KV()
-	opts := &api.QueryOptions{
-		WaitIndex: lastIndex,
-		WaitTime:  waitTime,
-	}
-	pairs, queryMeta, err := kv.List(key, opts)
-	if pairs == nil && queryMeta == nil {
-		logrus.WithError(err).Errorf("consul err. key=%s ", key)
-	}
-	if lastIndex == queryMeta.LastIndex {
-		return nil
-	}
-	kvpairs := make(map[string][]byte)
-	for _, pair := range pairs {
-		kvpairs[pair.Key] = pair.Value
-	}
-	return kvpairs
+	_, err := kv.Delete(prefix, &api.WriteOptions{})
+	return err
 }
+
+//func (c *consul) WatchLoop(ctx context.Context, key string, waitTime time.Duration, watchValue chan<- map[string][]byte) {
+//	//refreshTimer := time.NewTimer(c.refreshInterval)
+//	for {
+//		select {
+//		case <-ctx.Done():
+//			return
+//		default:
+//		}
+//		Value := c.watch(key, waitTime)
+//		if Value == nil {
+//			fmt.Println(waitTime, "no change......")
+//			continue
+//		} else {
+//			watchValue <- Value
+//		}
+//	}
+//}
+//
+//func (c *consul) watch(key string, waitTime time.Duration) map[string][]byte {
+//	_, lastIndex, err := c.List(key)
+//	if err != nil {
+//		logrus.WithError(err).Errorf("consul err. key=%s ", key)
+//	}
+//	kv := c.client.KV()
+//	opts := &api.QueryOptions{
+//		WaitIndex: lastIndex,
+//		WaitTime:  waitTime,
+//	}
+//	pairs, queryMeta, err := kv.List(key, opts)
+//	if pairs == nil && queryMeta == nil {
+//		logrus.WithError(err).Errorf("consul err. key=%s ", key)
+//	}
+//	if lastIndex == queryMeta.LastIndex {
+//		return nil
+//	}
+//	kvpairs := make(map[string][]byte)
+//	for _, pair := range pairs {
+//		kvpairs[pair.Key] = pair.Value
+//	}
+//	return kvpairs
+//}
