@@ -3,10 +3,11 @@ package configuration
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 func Test_Put(t *testing.T) {
-	c := NewConsul()
+	c := NewConsul("127.0.0.1:8500")
 	if c == nil {
 		t.FailNow()
 	}
@@ -27,14 +28,14 @@ func Test_Put(t *testing.T) {
 		t.FailNow()
 	}
 
-	err = c.Put("test/abc/a", []byte("test consul put abc a"))
+	err = c.Put("test/abc/a", []byte("test consul put abc a ss"))
 	if err != nil {
 		t.FailNow()
 	}
 }
 
 func Test_Get(t *testing.T) {
-	c := NewConsul()
+	c := NewConsul("127.0.0.1:8500")
 	if c == nil {
 		t.FailNow()
 	}
@@ -48,7 +49,7 @@ func Test_Get(t *testing.T) {
 }
 
 func Test_List(t *testing.T) {
-	c := NewConsul()
+	c := NewConsul("127.0.0.1:8500")
 	if c == nil {
 		t.FailNow()
 	}
@@ -63,17 +64,12 @@ func Test_List(t *testing.T) {
 	fmt.Println("err: ", err)
 }
 
-func Test_Watch(t *testing.T) {
-	c := NewConsul()
+func Test_watch(t *testing.T) {
+	c := NewConsul("127.0.0.1:8500")
 	if c == nil {
 		t.FailNow()
 	}
-	waitIndex := uint64(6803508)
-	v, index, err := c.Watch("test/abc/a",waitIndex)
-	if err != nil {
-		t.FailNow()
-	}
-	fmt.Println("value: ", string(v))
-	fmt.Println("index: ", index)
-	fmt.Println("err: ", err)
+	key := "test/abc/a"
+	v := c.watch(key, time.Second*60)
+	fmt.Println("value: ", string(v[key]))
 }
