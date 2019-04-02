@@ -13,7 +13,7 @@ var (
 	consulAddr = "127.0.0.1:8500"
 )
 
-func StartHttpServer(){
+func StartHttpServer() {
 	router := httprouter.New()
 	router.Handle("GET", "/key", GetKey)
 	router.Handle("GET", "/keylist", GetList)
@@ -21,13 +21,12 @@ func StartHttpServer(){
 	router.Handle("POST", "/put", SetKey)
 	router.Handle("PUT", "/put", SetKey)
 	router.Handle("DELETE", "/key", DeleteKey)
-	logrus.Infof("Listen...... %s",ListenAddr)
+	logrus.Infof("Listen...... %s", ListenAddr)
 	err := http.ListenAndServe(":8080", router)
-	if err != nil{
+	if err != nil {
 		logrus.Error(err)
 	}
 }
-
 
 func RespondV1(w http.ResponseWriter, code int, data interface{}) {
 	var response []byte
@@ -73,10 +72,10 @@ func GetKey(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	}
 	confs := NewConsul(consulAddr)
 	value, _, err := confs.Get(key)
-	if err != nil{
-		RespondV1(w, 500, fmt.Sprintf("consul error %s",err.Error()))
+	if err != nil {
+		RespondV1(w, 500, fmt.Sprintf("consul error %s", err.Error()))
 	}
-	RespondV1(w, 200,value)
+	RespondV1(w, 200, value)
 	//RespondV1(w, 200,"ok")
 
 }
@@ -87,23 +86,23 @@ func GetList(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 
 func SetKey(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	key := req.PostFormValue("key")
-	logrus.Info("key: ",key)
+	logrus.Info("key: ", key)
 	value := req.PostFormValue("value")
-	logrus.Info("value: ",value)
+	logrus.Info("value: ", value)
 	if key == "" {
 		RespondV1(w, 500, "parameter error")
 	}
 
 	confs := NewConsul(consulAddr)
 	err := confs.Put(key, []byte(value))
-	if err != nil{
-		RespondV1(w, 500, fmt.Sprintf("consul error %s",err.Error()))
+	if err != nil {
+		RespondV1(w, 500, fmt.Sprintf("consul error %s", err.Error()))
 	}
 	result := map[string][]byte{
 		key: []byte(value),
 	}
 
-	RespondV1(w, 200,result)
+	RespondV1(w, 200, result)
 }
 
 func DeleteKey(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {

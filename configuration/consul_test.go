@@ -3,6 +3,7 @@ package configuration
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 func Test_Put(t *testing.T) {
@@ -10,24 +11,39 @@ func Test_Put(t *testing.T) {
 	if c == nil {
 		t.FailNow()
 	}
-	key := "test"
-	value := []byte("test consul put")
-	err := c.Put(key, value)
+	//key := "test"
+	//value := []byte("test consul put")
+	//err := c.Put(key, value)
+	//if err != nil {
+	//	t.FailNow()
+	//}
+
+	err := c.Put("test/a", []byte("test consul put a"))
 	if err != nil {
 		t.FailNow()
 	}
 
-	err = c.Put("test/abc", []byte("test consul put abc"))
+	err = c.Put("test/b", []byte("test consul put b"))
 	if err != nil {
 		t.FailNow()
 	}
 
-	err = c.Put("test/def", []byte("test consul put def"))
+	err = c.Put("test/c/1", []byte("test consul put abc c 1"))
 	if err != nil {
 		t.FailNow()
 	}
-
-	err = c.Put("test/abc/a", []byte("test consul put abc a ss"))
+	time.Sleep(500 * time.Millisecond)
+	err = c.Put("test/c/2", []byte("test consul put abc c 2"))
+	if err != nil {
+		t.FailNow()
+	}
+	time.Sleep(500 * time.Millisecond)
+	err = c.Put("test/c/3", []byte("test consul put abc c 3"))
+	if err != nil {
+		t.FailNow()
+	}
+	time.Sleep(500 * time.Millisecond)
+	err = c.Put("test/c/4", []byte("test consul put abc c 4"))
 	if err != nil {
 		t.FailNow()
 	}
@@ -38,11 +54,11 @@ func Test_Get(t *testing.T) {
 	if c == nil {
 		t.FailNow()
 	}
-	v, index, err := c.Get("test/abc/a")
+	v, index, err := c.Get("test/c/1")
 	if err != nil {
 		t.FailNow()
 	}
-	fmt.Println("value: ", string(v))
+	fmt.Printf("value: %v", v)
 	fmt.Println("index: ", index)
 	fmt.Println("err: ", err)
 }
