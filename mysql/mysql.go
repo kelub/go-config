@@ -15,7 +15,7 @@ type MysqlEngine struct {
 func NewMysqlEngine() (*xorm.Engine, error) {
 	conf := mysql.Config{
 		User:   "config",
-		Passwd: "wje23Orldsj",
+		Passwd: "dell+ikbc",
 		Net:    "tcp",
 		Addr:   "127.0.0.1:3306",
 		DBName: "config",
