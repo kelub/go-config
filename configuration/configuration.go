@@ -10,3 +10,13 @@ type Configer interface {
 	//删除键为 key 的值
 	Delete(key string) error
 }
+
+//func RunServer(){
+//	wg := sync.WaitGroup{}
+//	wg.Add(1)
+//
+//}
+//
+//func Init(){
+//
+//}

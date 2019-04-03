@@ -12,8 +12,15 @@ type MysqlEngine struct {
 	*xorm.Engine
 }
 
-func NewMysqlEngine() (*xorm.Engine, error) {
-	conf := mysql.Config{
+var GmysqlEngine *MysqlEngine
+
+func init() {
+	GmysqlEngine, _ = NewMysqlEngine(nil)
+	//gMysqlengine = mysqlEngine
+}
+
+func NewMysqlEngine(conf *mysql.Config) (*MysqlEngine, error) {
+	conf = &mysql.Config{
 		User:   "config",
 		Passwd: "dell+ikbc",
 		Net:    "tcp",
@@ -31,7 +38,18 @@ func NewMysqlEngine() (*xorm.Engine, error) {
 		logrus.Errorf("ping engine error err:%v", err)
 		return nil, fmt.Errorf("get new engine error err:%v", err)
 	}
-	return engine, nil
+	return &MysqlEngine{
+		engine,
+	}, nil
+}
+
+func GetMysqlEngine() (*MysqlEngine, error) {
+	err := GmysqlEngine.Ping()
+	if err != nil {
+		logrus.Errorf("ping engine error err:%v", err)
+		return nil, fmt.Errorf("get new engine error err:%v", err)
+	}
+	return GmysqlEngine, nil
 }
 
 func (e *MysqlEngine) Table(tableNameOrBean interface{}) *xorm.Session {
