@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	conf "go-config/client"
+	conf "kelub/go-config/client"
 	"sync"
 	"time"
 )

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"go-config/configuration"
+	"kelub/go-config/configuration"
 )
 
 func main() {
