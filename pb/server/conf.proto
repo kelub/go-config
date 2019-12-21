@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package server;
+
+// GetConfReq 获取配置请求
+message GetConfReq {
+    // service 服务名称，也可以是某个配置大类名称
+    string service = 1;
+    // key 配置键
+    string key = 2;
+    // subkey 配置子键
+    string subkey = 3;
+}
+
+//
+message ConfValue {
+    string key = 1;
+    string subkey = 2;
+    string value = 3;
+}
+
+// GetConfRsp 获取配置响应
+message GetConfRsp{
+    required ConfValue list = 1;
+}
+
+service Config {
+    rpc GetConfig(GetConfReq) returns (GetConfRsp);
+}

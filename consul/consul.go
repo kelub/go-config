@@ -1,4 +1,4 @@
-package configuration
+package consul
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ type consul struct {
 	//watchValue 		chan map[string][]byte
 }
 
-func NewConsul(addr string) Configer {
+func NewConsul(addr string) *consul {
 	config := api.DefaultConfig()
 	config.Address = addr
 	client, err := api.NewClient(config)

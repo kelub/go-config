@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/julienschmidt/httprouter"
+	"kelub/go-config-service/consul"
 	"net/http"
 )
 
@@ -77,7 +78,7 @@ func (s *httpServer) GetKey(w http.ResponseWriter, req *http.Request, ps httprou
 	if key == "" {
 		s.RespondV1(w, 500, "parameter error")
 	}
-	confs := NewConsul(consulAddr)
+	confs := consul.NewConsul(consulAddr)
 	var value []byte
 	var err error
 	value, _, err = confs.Get(key)
@@ -108,7 +109,7 @@ func (s *httpServer) SetKey(w http.ResponseWriter, req *http.Request, ps httprou
 		s.RespondV1(w, 500, "parameter error")
 	}
 
-	confs := NewConsul(consulAddr)
+	confs := consul.NewConsul(consulAddr)
 	var err error
 	err = confs.Put(key, []byte(value))
 	if err != nil {
