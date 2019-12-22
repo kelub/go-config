@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+func init() {
+	InitConsul("127.0.0.1:8500")
+}
+
 func Test_Put(t *testing.T) {
 	c := NewConsul("127.0.0.1:8500")
 	if c == nil {
