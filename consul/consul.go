@@ -10,8 +10,9 @@ import (
 
 var consulClient *api.Client
 var consulAddr string
+var consulMgr *Consul
 
-type consul struct {
+type Consul struct {
 	client *api.Client
 	//watchValue 		chan map[string][]byte
 }
@@ -23,6 +24,7 @@ func InitConsul(addr string) error {
 	if err != nil {
 		return err
 	}
+	consulMgr = NewConsul(addr)
 	return nil
 }
 
@@ -42,17 +44,21 @@ func GetConsulClient() *api.Client {
 	return consulClient
 }
 
+func GetConsulMgr() *Consul {
+	return consulMgr
+}
+
 func GetConsulAddr() string {
 	return consulAddr
 }
 
-func NewConsul(addr string) *consul {
-	return &consul{
+func NewConsul(addr string) *Consul {
+	return &Consul{
 		client: consulClient,
 	}
 }
 
-func (c *consul) Put(key string, value []byte) error {
+func (c *Consul) Put(key string, value []byte) error {
 	kv := c.client.KV()
 	p := &api.KVPair{
 		Key:   key,
@@ -65,7 +71,7 @@ func (c *consul) Put(key string, value []byte) error {
 	return nil
 }
 
-func (c *consul) Get(key string) ([]byte, uint64, error) {
+func (c *Consul) Get(key string) ([]byte, uint64, error) {
 	kv := c.client.KV()
 	pair, queryMeta, err := kv.Get(key, &api.QueryOptions{})
 	if err != nil {
@@ -84,7 +90,7 @@ func (c *consul) Get(key string) ([]byte, uint64, error) {
 	return value, lastIndex, nil
 }
 
-func (c *consul) List(prefix string) (map[string][]byte, uint64, error) {
+func (c *Consul) List(prefix string) (map[string][]byte, uint64, error) {
 	kv := c.client.KV()
 	pairs, queryMeta, err := kv.List(prefix, &api.QueryOptions{})
 	if err != nil {
@@ -100,20 +106,20 @@ func (c *consul) List(prefix string) (map[string][]byte, uint64, error) {
 	return kvpairs, queryMeta.LastIndex, nil
 }
 
-func (c *consul) Delete(key string) error {
+func (c *Consul) Delete(key string) error {
 	kv := c.client.KV()
 	_, err := kv.Delete(key, &api.WriteOptions{})
 	return err
 }
 
-func (c *consul) DeleteTree(prefix string) error {
+func (c *Consul) DeleteTree(prefix string) error {
 	kv := c.client.KV()
 	_, err := kv.Delete(prefix, &api.WriteOptions{})
 	return err
 }
 
 // WatchLoop Loop waitTime
-func (c *consul) WatchLoop(ctx context.Context, key string, waitTime time.Duration, watchValue chan<- map[string][]byte) {
+func (c *Consul) WatchLoop(ctx context.Context, key string, waitTime time.Duration, watchValue chan<- map[string][]byte) {
 	//refreshTimer := time.NewTimer(c.refreshInterval)
 	for {
 		select {
@@ -132,7 +138,7 @@ func (c *consul) WatchLoop(ctx context.Context, key string, waitTime time.Durati
 	}
 }
 
-func (c *consul) watch(key string, waitTime time.Duration) map[string][]byte {
+func (c *Consul) watch(key string, waitTime time.Duration) map[string][]byte {
 	_, lastIndex, err := c.List(key)
 	if err != nil {
 		logrus.WithError(err).Errorf("consul err. key=%s ", key)
