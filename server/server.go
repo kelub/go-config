@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	"google.golang.org/grpc"
 	"kelub/go-config/consul"
 	serverpb "kelub/go-config/pb/server"
 )
@@ -61,4 +62,8 @@ func (c *GetConf) GetConfig(ctx context.Context, req *serverpb.GetConfReq) (rsp 
 		List: confValues,
 	}
 	return
+}
+
+func RegisterGetConfig(s *grpc.Server) {
+	serverpb.RegisterConfigServer(s, &GetConf{})
 }

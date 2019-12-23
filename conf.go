@@ -1,5 +1,33 @@
-package go_config_service
+package go_config
 
-func Init() {
+import (
+	"github.com/Sirupsen/logrus"
+	"google.golang.org/grpc"
+	"kelub/go-config/loader"
+	"kelub/go-config/server"
+	"kelub/go-config/util"
+)
 
+func Main() {
+	wg := &util.WaitGroupWrapper{}
+	opts := loader.NewOptions()
+	ex := loader.CreateExporter(opts)
+
+	RegisterRPC(ex.RPCServer)
+
+	wg.Wrap(func() {
+		ex.HTTPServer.Main(opts)
+	})
+	wg.Wrap(func() {
+		loader.RunRPCServer(ex.RPCServer, opts.RPCAddress, opts.RPCPort)
+	})
+	wg.Wait()
+}
+
+func RegisterRPC(s *grpc.Server) {
+	logEntry := logrus.WithFields(logrus.Fields{
+		"func_name": "RegisterRPC",
+	})
+	server.RegisterGetConfig(s)
+	logEntry.Infoln("注册RPC服务")
 }
