@@ -2,6 +2,11 @@ syntax = "proto3";
 
 package server;
 
+enum KeyType {
+    Key = 0;        // key 类型 eg foo/a/b
+    Prefix = 1;     // Prefix  类型 eg foo/
+}
+
 // GetConfReq 获取配置请求
 message GetConfReq {
     // service 服务名称，也可以是某个配置大类名称
@@ -10,6 +15,8 @@ message GetConfReq {
     string key = 2;
     // subkey 配置子键
     string subkey = 3;
+    // 键类型
+    int32 KeyType = 4;
 }
 
 //
@@ -21,7 +28,7 @@ message ConfValue {
 
 // GetConfRsp 获取配置响应
 message GetConfRsp{
-    required ConfValue list = 1;
+    repeated ConfValue list = 1;
 }
 
 service Config {
