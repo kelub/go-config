@@ -8,22 +8,25 @@ import (
 	"github.com/go-xorm/xorm"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
+	"kelub/go-config/pubsub/kafka"
 	"kelub/go-config/server"
 	"kelub/go-config/util"
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 var gExporter *Exporter
 
 type Options struct {
-	ServerName    string `flag:"server_name"`
-	RPCAddress    string `flag:"rpc-address"`
-	RPCPort       int    `flag:"rpc-port"`
-	ConsulAddress string `flag:"tcp-port"`
-	HealthPort    int    `flag:"HealthPort"`
-	ProfPort      int    `flag:"prof_port"`
+	ServerName    string   `flag:"server_name"`
+	RPCAddress    string   `flag:"rpc-address"`
+	RPCPort       int      `flag:"rpc-port"`
+	ConsulAddress string   `flag:"tcp-port"`
+	HealthPort    int      `flag:"HealthPort"`
+	ProfPort      int      `flag:"prof_port"`
+	KafkaAddress  []string `flag:"kafka-address"`
 }
 
 func NewOptions() *Options {
@@ -34,6 +37,7 @@ func NewOptions() *Options {
 		ConsulAddress: viper.GetString("consul_port"),
 		HealthPort:    viper.GetInt("health_port"),
 		ProfPort:      viper.GetInt("prof_port"),
+		KafkaAddress:  viper.GetStringSlice("kafka_addrs"),
 	}
 }
 
@@ -48,6 +52,7 @@ type Exporter struct {
 	RedisEngine *redis.Client
 
 	HTTPServer *HTTPServer
+	Publisher  *pubsub.KKAsyncPublisher
 }
 
 func CreateExporter(opts *Options) *Exporter {
@@ -56,6 +61,7 @@ func CreateExporter(opts *Options) *Exporter {
 
 	exporter.RPCServer = createRPCServer()
 	exporter.HTTPServer = createHTTPServer()
+	exporter.Publisher = pubsub.CreateKKAsyncPublisher(opts.KafkaAddress, 100*time.Millisecond)
 	return exporter
 }
 
