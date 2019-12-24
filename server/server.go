@@ -1,9 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc"
 	"kelub/go-config/consul"
 	"kelub/go-config/loader"
@@ -63,7 +65,8 @@ func (c *GetConf) GetConfig(ctx context.Context, req *serverpb.GetConfReq) (rsp 
 		confValues = append(confValues, confValue)
 	}
 	rsp = &serverpb.GetConfRsp{
-		List: confValues,
+		Service: req.GetService(),
+		List:    confValues,
 	}
 	return
 }
@@ -87,8 +90,50 @@ func (p *PushManager) Run() {
 		case <-ctx.Done():
 			return
 		case v := <-watchValue:
-
-			ex.Publisher.Publish(topicName)
+			message, err := p.parese(v)
+			if err != nil {
+				logrus.Errorf("proto Marshal error", err)
+				return
+			}
+			err = ex.Publisher.Publish(topicName, message)
+			if err != nil {
+				return
+			}
 		}
 	}
+}
+
+func (p *PushManager) parese(watchValue map[string][]byte) (data []byte, err error) {
+	var value []byte
+	for k, _ := range watchValue {
+		value = []byte(k)
+		break
+	}
+	values := bytes.Split(value, []byte("/"))
+
+	service := bytes.Join(values[:2], []byte("/"))
+	key := bytes.Join(values[:3], []byte("/"))
+
+	//[]byte(service)
+	confValues := make([]*serverpb.ConfValue, 0, len(watchValue))
+
+	for k, v := range watchValue {
+		subkey := []byte(k)[len(key):]
+		confValue := new(serverpb.ConfValue)
+		confValue.Key = string(key)
+		confValue.Subkey = string(subkey)
+		confValue.Value = string(v)
+		confValues = append(confValues, confValue)
+	}
+	message := &serverpb.GetConfRsp{
+		Service: string(service),
+		List:    confValues,
+	}
+
+	data, err = proto.Marshal(message)
+	if err != nil {
+		logrus.Errorf("proto Marshal error", err)
+		return nil, fmt.Errorf("proto Marshal error %s", err.Error())
+	}
+	return data, nil
 }
