@@ -28,7 +28,8 @@ message ConfValue {
 
 // GetConfRsp 获取配置响应
 message GetConfRsp{
-    repeated ConfValue list = 1;
+    string service = 1;
+    repeated ConfValue list = 2;
 }
 
 service Config {
