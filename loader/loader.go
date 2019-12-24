@@ -6,10 +6,8 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/go-redis/redis"
 	"github.com/go-xorm/xorm"
-	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 	"kelub/go-config/pubsub/kafka"
-	"kelub/go-config/server"
 	"kelub/go-config/util"
 	"net"
 	"net/http"
@@ -18,32 +16,6 @@ import (
 )
 
 var gExporter *Exporter
-
-type Options struct {
-	ServerName    string   `flag:"server_name"`
-	RPCAddress    string   `flag:"rpc-address"`
-	RPCPort       int      `flag:"rpc-port"`
-	ConsulAddress string   `flag:"tcp-port"`
-	HealthPort    int      `flag:"HealthPort"`
-	ProfPort      int      `flag:"prof_port"`
-	KafkaAddress  []string `flag:"kafka-address"`
-}
-
-func NewOptions() *Options {
-	return &Options{
-		ServerName:    viper.GetString("server_name"),
-		RPCAddress:    viper.GetString("rpc_addr"),
-		RPCPort:       viper.GetInt("rpc_port"),
-		ConsulAddress: viper.GetString("consul_port"),
-		HealthPort:    viper.GetInt("health_port"),
-		ProfPort:      viper.GetInt("prof_port"),
-		KafkaAddress:  viper.GetStringSlice("kafka_addrs"),
-	}
-}
-
-func GetTCPAddress() string {
-	return fmt.Sprintf("%s:%d", viper.GetString("tcp_addr"), viper.GetInt("tcp_port"))
-}
 
 type Exporter struct {
 	RPCServer *grpc.Server
@@ -69,8 +41,8 @@ func SetGExporter(exporter *Exporter) {
 	gExporter = exporter
 }
 
-func RegisterRPC(s *grpc.Server) {
-	server.RegisterGetConfig(s)
+func GetGExporter() *Exporter {
+	return gExporter
 }
 
 func createRPCServer() *grpc.Server {

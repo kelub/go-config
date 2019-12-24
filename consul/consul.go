@@ -119,7 +119,7 @@ func (c *Consul) DeleteTree(prefix string) error {
 }
 
 // WatchLoop Loop waitTime
-func (c *Consul) WatchLoop(ctx context.Context, key string, waitTime time.Duration) chan<- map[string][]byte {
+func (c *Consul) WatchLoop(ctx context.Context, key string, waitTime time.Duration) <-chan map[string][]byte {
 	//refreshTimer := time.NewTimer(c.refreshInterval)
 	watchValue := make(chan map[string][]byte, 1)
 	go func() {

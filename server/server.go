@@ -6,6 +6,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"google.golang.org/grpc"
 	"kelub/go-config/consul"
+	"kelub/go-config/loader"
 	serverpb "kelub/go-config/pb/server"
 )
 
@@ -13,6 +14,9 @@ import (
 RPC服务接口实现
 消息队列接口实现
 */
+
+var confPrefix = "conf/"
+var topicName = "conf"
 
 type GetConf struct {
 }
@@ -66,4 +70,25 @@ func (c *GetConf) GetConfig(ctx context.Context, req *serverpb.GetConfReq) (rsp 
 
 func RegisterGetConfig(s *grpc.Server) {
 	serverpb.RegisterConfigServer(s, &GetConf{})
+}
+
+type PushManager struct {
+}
+
+func (p *PushManager) Run() {
+	c := consul.GetConsulMgr()
+	opts := loader.GetOptions()
+	ex := loader.GetGExporter()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	watchValue := c.WatchLoop(ctx, confPrefix, opts.Watch.PollInterval)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case v := <-watchValue:
+
+			ex.Publisher.Publish(topicName)
+		}
+	}
 }
