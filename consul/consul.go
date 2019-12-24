@@ -119,23 +119,29 @@ func (c *Consul) DeleteTree(prefix string) error {
 }
 
 // WatchLoop Loop waitTime
-func (c *Consul) WatchLoop(ctx context.Context, key string, waitTime time.Duration, watchValue chan<- map[string][]byte) {
+func (c *Consul) WatchLoop(ctx context.Context, key string, waitTime time.Duration) chan<- map[string][]byte {
 	//refreshTimer := time.NewTimer(c.refreshInterval)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
+	watchValue := make(chan map[string][]byte, 1)
+	go func() {
+		defer logrus.Infoln("WatchLoop exit")
+		defer close(watchValue)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			Value := c.watch(key, waitTime)
+			if Value == nil {
+				//fmt.Println(waitTime, "no change......")
+				time.Sleep(waitTime)
+				continue
+			} else {
+				watchValue <- Value
+			}
 		}
-		Value := c.watch(key, waitTime)
-		if Value == nil {
-			fmt.Println(waitTime, "no change......")
-			time.Sleep(waitTime)
-			continue
-		} else {
-			watchValue <- Value
-		}
-	}
+	}()
+	return watchValue
 }
 
 func (c *Consul) watch(key string, waitTime time.Duration) map[string][]byte {
