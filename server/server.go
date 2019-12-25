@@ -90,7 +90,11 @@ func (p *PushManager) Run() {
 		case <-ctx.Done():
 			return
 		case v := <-watchValue:
-			message, err := p.parese(v)
+			if v.Err != nil {
+				logrus.Errorf("WatchLoop Error", v.Err)
+				return
+			}
+			message, err := p.parese(v.Value)
 			if err != nil {
 				logrus.Errorf("proto Marshal error", err)
 				return

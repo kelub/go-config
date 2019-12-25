@@ -12,9 +12,15 @@ var consulClient *api.Client
 var consulAddr string
 var consulMgr *Consul
 
+type WatchLoopResult struct {
+	Value map[string][]byte
+	Err   error
+}
+
 type Consul struct {
 	client *api.Client
 	//watchValue 		chan map[string][]byte
+	WatchRetry int
 }
 
 func InitConsul(addr string) error {
@@ -54,7 +60,8 @@ func GetConsulAddr() string {
 
 func NewConsul(addr string) *Consul {
 	return &Consul{
-		client: consulClient,
+		client:     consulClient,
+		WatchRetry: 3,
 	}
 }
 
@@ -119,9 +126,11 @@ func (c *Consul) DeleteTree(prefix string) error {
 }
 
 // WatchLoop Loop waitTime
-func (c *Consul) WatchLoop(ctx context.Context, key string, waitTime time.Duration) <-chan map[string][]byte {
+func (c *Consul) WatchLoop(ctx context.Context, key string, waitTime time.Duration) (Result <-chan *WatchLoopResult) {
+	var tempDelay time.Duration // how long to sleep when failed
+	var tempRetry = 0
 	//refreshTimer := time.NewTimer(c.refreshInterval)
-	watchValue := make(chan map[string][]byte, 1)
+	watchValue := make(chan *WatchLoopResult, 1)
 	go func() {
 		defer logrus.Infoln("WatchLoop exit")
 		defer close(watchValue)
@@ -131,23 +140,54 @@ func (c *Consul) WatchLoop(ctx context.Context, key string, waitTime time.Durati
 				return
 			default:
 			}
-			Value := c.watch(key, waitTime)
+			Value, err := c.watch(key, waitTime)
+			if err != nil {
+				if tempRetry > c.WatchRetry {
+					watchValue <- &WatchLoopResult{Value: nil, Err: err}
+					return
+				}
+				if tempDelay == 0 {
+					tempDelay = 500 * time.Millisecond
+				} else {
+					tempDelay *= 2
+				}
+				if max := 10 * time.Second; tempDelay > max {
+					tempDelay = max
+				}
+				logrus.Infof("watch error: %v; retrying in %v", err, tempDelay)
+				timer := time.NewTimer(tempDelay)
+				select {
+				case <-timer.C:
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				}
+				tempRetry++
+				continue
+			}
+			tempDelay = 0
 			if Value == nil {
 				//fmt.Println(waitTime, "no change......")
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
 				time.Sleep(waitTime)
 				continue
 			} else {
-				watchValue <- Value
+				watchValue <- &WatchLoopResult{Value: Value}
 			}
 		}
 	}()
 	return watchValue
 }
 
-func (c *Consul) watch(key string, waitTime time.Duration) map[string][]byte {
+func (c *Consul) watch(key string, waitTime time.Duration) (map[string][]byte, error) {
 	_, lastIndex, err := c.List(key)
 	if err != nil {
 		logrus.WithError(err).Errorf("consul err. key=%s ", key)
+		return nil, err
 	}
 	kv := c.client.KV()
 	opts := &api.QueryOptions{
@@ -157,13 +197,15 @@ func (c *Consul) watch(key string, waitTime time.Duration) map[string][]byte {
 	pairs, queryMeta, err := kv.List(key, opts)
 	if pairs == nil && queryMeta == nil {
 		logrus.WithError(err).Errorf("consul err. key=%s ", key)
+		return nil, err
 	}
+	// 当无变化直接返回 nil
 	if lastIndex == queryMeta.LastIndex {
-		return nil
+		return nil, nil
 	}
 	kvpairs := make(map[string][]byte)
 	for _, pair := range pairs {
 		kvpairs[pair.Key] = pair.Value
 	}
-	return kvpairs
+	return kvpairs, nil
 }
