@@ -10,6 +10,7 @@ import (
 	"kelub/go-config/consul"
 	"kelub/go-config/loader"
 	serverpb "kelub/go-config/pb/server"
+	"sync"
 )
 
 /*
@@ -23,8 +24,27 @@ var topicName = "conf"
 type GetConf struct {
 }
 
+type FastWatch struct {
+	mu       sync.RWMutex
+	WatchMap map[string]*consul.Watch
+}
+
+func NewFastWatch() *FastWatch {
+	return &FastWatch{
+		mu: sync.RWMutex{},
+	}
+}
+
 // GetConfig PRC 实现
 func (c *GetConf) GetConfig(ctx context.Context, req *serverpb.GetConfReq) (rsp *serverpb.GetConfRsp, err error) {
+	if !req.IsFastWatch {
+		return c.getCOnfig(ctx, req)
+	} else {
+		return c.fastWatch(ctx, req)
+	}
+}
+
+func (c *GetConf) getCOnfig(ctx context.Context, req *serverpb.GetConfReq) (rsp *serverpb.GetConfRsp, err error) {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name": "GetConfig",
 		"service":   req.GetService(),
@@ -69,6 +89,10 @@ func (c *GetConf) GetConfig(ctx context.Context, req *serverpb.GetConfReq) (rsp 
 		List:    confValues,
 	}
 	return
+}
+
+func (c *GetConf) fastWatch(ctx context.Context, req *serverpb.GetConfReq) (rsp *serverpb.GetConfRsp, err error) {
+	return nil, nil
 }
 
 func RegisterGetConfig(s *grpc.Server) {

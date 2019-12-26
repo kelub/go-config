@@ -17,6 +17,8 @@ message GetConfReq {
     string subkey = 3;
     // 键类型
     int32 KeyType = 4;
+    // 是否注册快速Watch
+    bool    isFastWatch = 5;
 }
 
 //
