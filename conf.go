@@ -14,6 +14,7 @@ func Main() {
 	opts := loader.NewOptions()
 	ex := loader.CreateExporter(opts)
 	err := consul.InitConsul(opts.ConsulAddress)
+	consul.CreateFastWatch()
 	if err != nil {
 		logrus.Errorf("InitConsul error", err)
 		return

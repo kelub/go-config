@@ -10,7 +10,6 @@ import (
 	"kelub/go-config/consul"
 	"kelub/go-config/loader"
 	serverpb "kelub/go-config/pb/server"
-	"sync"
 )
 
 /*
@@ -20,33 +19,23 @@ RPC服务接口实现
 
 var confPrefix = "conf/"
 var topicName = "conf"
+var fastWatchTopic = "fastWatch_"
 
 type GetConf struct {
-}
-
-type FastWatch struct {
-	mu       sync.RWMutex
-	WatchMap map[string]*consul.Watch
-}
-
-func NewFastWatch() *FastWatch {
-	return &FastWatch{
-		mu: sync.RWMutex{},
-	}
 }
 
 // GetConfig PRC 实现
 func (c *GetConf) GetConfig(ctx context.Context, req *serverpb.GetConfReq) (rsp *serverpb.GetConfRsp, err error) {
 	if !req.IsFastWatch {
-		return c.getCOnfig(ctx, req)
+		return c.getConfig(ctx, req)
 	} else {
 		return c.fastWatch(ctx, req)
 	}
 }
 
-func (c *GetConf) getCOnfig(ctx context.Context, req *serverpb.GetConfReq) (rsp *serverpb.GetConfRsp, err error) {
+func (c *GetConf) getConfig(ctx context.Context, req *serverpb.GetConfReq) (rsp *serverpb.GetConfRsp, err error) {
 	logEntry := logrus.WithFields(logrus.Fields{
-		"func_name": "GetConfig",
+		"func_name": "getCOnfig",
 		"service":   req.GetService(),
 		"key":       req.GetKey(),
 		"subkey":    req.GetSubkey(),
@@ -54,18 +43,9 @@ func (c *GetConf) getCOnfig(ctx context.Context, req *serverpb.GetConfReq) (rsp 
 	})
 	//keyType := serverpb.KeyType_name[req.GetKeyType()]
 	logEntry.Debugln("GetConfig")
-	if len(req.GetService()) == 0 {
-		logrus.Errorf("service is nil")
-		return nil, fmt.Errorf("service is nil")
-	}
-	KeyPrefix := req.GetService()
-	Key := req.GetService()
-	if len(req.GetKey()) != 0 {
-		KeyPrefix = KeyPrefix + "/" + req.GetKey()
-		Key = Key + "/" + req.GetKey()
-		if len(req.GetSubkey()) != 0 {
-			KeyPrefix = KeyPrefix + "/" + req.GetSubkey()
-		}
+	KeyPrefix, Key, err := c.keyPrefix(req)
+	if err != nil {
+		return nil, err
 	}
 	consulMgr := consul.GetConsulMgr()
 	list, _, err := consulMgr.List(KeyPrefix)
@@ -92,7 +72,82 @@ func (c *GetConf) getCOnfig(ctx context.Context, req *serverpb.GetConfReq) (rsp 
 }
 
 func (c *GetConf) fastWatch(ctx context.Context, req *serverpb.GetConfReq) (rsp *serverpb.GetConfRsp, err error) {
+	logEntry := logrus.WithFields(logrus.Fields{
+		"func_name": "fastWatch",
+		"service":   req.GetService(),
+		"key":       req.GetKey(),
+		"subkey":    req.GetSubkey(),
+		"keyType":   serverpb.KeyType_name[req.GetKeyType()],
+	})
+	KeyPrefix, Key, err := c.keyPrefix(req)
+	if err != nil {
+		return nil, err
+	}
+	fw := consul.GetFastWatch()
+	done := make(chan struct{})
+	if req.KeyType == 0 {
+		valueCh, err := fw.KeyWatch(done, KeyPrefix)
+		if err != nil {
+			logEntry.Errorf("KeyWatch error:", err)
+			return nil, err
+		}
+		go func() {
+			pub := loader.GetGExporter().Publisher
+			topic := fastWatchTopic + KeyPrefix
+			for {
+				select {
+				case <-done:
+					logEntry.Errorf("KeyWatch Loop Exit")
+					return
+				case v := <-valueCh:
+					err := pub.Publish(topic, v)
+					if err != nil {
+						return
+					}
+				}
+			}
+		}()
+	} else if req.KeyType == 1 {
+		valueCh, err := fw.KeyPrefixWatch(done, KeyPrefix)
+		if err != nil {
+			logEntry.Errorf("KeyPrefixWatch error:", err)
+			return nil, err
+		}
+		go func() {
+			pub := loader.GetGExporter().Publisher
+			topic := fastWatchTopic + KeyPrefix
+			for {
+				select {
+				case <-done:
+					logEntry.Errorf("KeyPrefixWatch Loop Exit")
+					return
+				case v := <-valueCh:
+					err := pub.Publish(topic, v)
+					if err != nil {
+						return
+					}
+				}
+			}
+		}()
+	}
 	return nil, nil
+}
+
+func (c *GetConf) keyPrefix(req *serverpb.GetConfReq) (KeyPrefix, Key string, err error) {
+	if len(req.GetService()) == 0 {
+		logrus.Errorf("service is nil")
+		return "", "", fmt.Errorf("service is nil")
+	}
+	KeyPrefix = req.GetService()
+	Key = req.GetService()
+	if len(req.GetKey()) != 0 {
+		KeyPrefix = KeyPrefix + "/" + req.GetKey()
+		Key = Key + "/" + req.GetKey()
+		if len(req.GetSubkey()) != 0 {
+			KeyPrefix = KeyPrefix + "/" + req.GetSubkey()
+		}
+	}
+	return
 }
 
 func RegisterGetConfig(s *grpc.Server) {
