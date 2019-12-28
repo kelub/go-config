@@ -8,6 +8,8 @@ import (
 	"sync"
 )
 
+var gFastWatch *FastWatch
+
 type watchHandle func(idx uint64, raw interface{})
 
 // Watch watch 基础结构
@@ -67,16 +69,15 @@ func NewKeyPrefixWatch(keyprefix string) (*Watch, error) {
 }
 
 // KeyWatch 运行监听 变化值由 KeyValueCh 传递
-func (w *Watch) KeyWatch(done chan<- struct{}) {
+func (w *Watch) KeyWatch(done chan<- struct{}) <-chan []byte {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name": "KeyWatch",
 		"key":       w.WatchKey,
 	})
 	logEntry.Debugln("Start KeyWatch...")
-	defer close(done)
 	if w.WatchType != "key" {
 		logEntry.Errorf("type must be key ")
-		return
+		return nil
 	}
 	w.KeyValueCh = make(chan []byte, 1)
 	defer close(w.KeyValueCh)
@@ -96,11 +97,15 @@ func (w *Watch) KeyWatch(done chan<- struct{}) {
 			logEntry.Debugf("value: %s", v.Value)
 		}
 	}
-
-	err := w.run()
-	if err != nil {
-		logEntry.Error("KeyWatch run stop", err)
-	}
+	// 运行监听循环，退出 close done chan 通知父gorutine
+	go func() {
+		defer close(done)
+		err := w.run()
+		if err != nil {
+			logEntry.Error("KeyWatch run stop", err)
+		}
+	}()
+	return w.KeyValueCh
 }
 
 // KeyPrefixWatch 运行监听 变化值由 KeyPrefixValueCh 传递
@@ -109,7 +114,6 @@ func (w *Watch) KeyPrefixWatch(done chan<- struct{}) <-chan map[string][]byte {
 		"func_name": "KeyPrefixWatch",
 		"key":       w.WatchKey,
 	})
-	defer close(done)
 	if w.WatchType != "keyprefix" {
 		logEntry.Errorf("type must be keyprefix ")
 		return nil
@@ -134,6 +138,7 @@ func (w *Watch) KeyPrefixWatch(done chan<- struct{}) <-chan map[string][]byte {
 		}
 	}
 	go func() {
+		defer close(done)
 		err := w.run()
 		if err != nil {
 			logEntry.Error("KeyWatch run", err)
@@ -165,44 +170,55 @@ func (w *Watch) Stop() {
 	}
 }
 
-type WatchMgr struct {
+// 全局 FastWatch 控制
+type FastWatch struct {
 	WatchMap sync.Map // key: *plan
 }
 
-func (wm *WatchMgr) KeyWatch(key string) error {
-	_, ok := wm.WatchMap.Load(key)
+func CreateFastWatch() *FastWatch {
+	gFastWatch = &FastWatch{}
+	return gFastWatch
+}
+
+func GetFastWatch() *FastWatch {
+	return gFastWatch
+}
+
+// KeyWatch 得到新的 KeyWatch 循环，并返回值的 chan
+// done 通知父 goruntine Watch 循环退出。
+// goruntine safe
+func (fw *FastWatch) KeyWatch(done chan<- struct{}, key string) (value <-chan []byte, err error) {
+	_, ok := fw.WatchMap.Load(key)
 	if ok {
-		return fmt.Errorf("has exist key watch key: %s", key)
+		return nil, fmt.Errorf("has exist key watch key: %s", key)
 	}
 	w, err := NewKeyWatch(key)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	done := make(chan struct{})
-	defer close(done)
-	w.KeyWatch(done)
-	select {
-	case <-done:
-		wm.WatchMap.Delete(key)
-		return nil
-	}
+	value = w.KeyWatch(done)
+	fw.WatchMap.Store(key, w)
+	return value, nil
 }
 
-func (wm *WatchMgr) KeyPrefixWatch(key string) error {
-	_, ok := wm.WatchMap.Load(key)
+// KeyPrefixWatch 得到新的 KeyPrefixWatch 循环，并返回值的 chan
+// done 通知父 goruntine Watch 循环退出。
+// goruntine safe
+func (fw *FastWatch) KeyPrefixWatch(done chan<- struct{}, key string) (value <-chan map[string][]byte, err error) {
+	_, ok := fw.WatchMap.Load(key)
 	if ok {
-		return fmt.Errorf("has exist key watch key: %s", key)
+		return nil, fmt.Errorf("has exist key watch key: %s", key)
 	}
 	w, err := NewKeyPrefixWatch(key)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	done := make(chan struct{})
-	defer close(done)
-	w.KeyPrefixWatch(done)
-	select {
-	case <-done:
-		wm.WatchMap.Delete(key)
-		return nil
-	}
+	value = w.KeyPrefixWatch(done)
+	fw.WatchMap.Store(key, w)
+	return value, nil
+}
+
+// Delete
+func (fw *FastWatch) Delete(key string) {
+	fw.WatchMap.Delete(key)
 }
