@@ -99,8 +99,23 @@ func (c *GetConf) fastWatch(ctx context.Context, req *serverpb.GetConfReq) (rsp 
 				case <-done:
 					logEntry.Errorf("KeyWatch Loop Exit")
 					return
-				case v := <-valueCh:
-					err := pub.Publish(topic, v)
+				case list := <-valueCh:
+					confValues := make([]*serverpb.ConfValue, 1)
+					confValue := new(serverpb.ConfValue)
+					confValue.Key = req.GetKey()
+					confValue.Subkey = req.GetSubkey()
+					confValue.Value = string(list)
+					confValues[0] = confValue
+					confs := serverpb.GetConfRsp{
+						Service: req.GetService(),
+						List:    confValues,
+					}
+					v, err := proto.Marshal(&confs)
+					if err != nil {
+						logEntry.Errorf("消息序列化失败")
+						continue
+					}
+					err = pub.Publish(topic, v)
 					if err != nil {
 						return
 					}
@@ -121,14 +136,35 @@ func (c *GetConf) fastWatch(ctx context.Context, req *serverpb.GetConfReq) (rsp 
 				case <-done:
 					logEntry.Errorf("KeyPrefixWatch Loop Exit")
 					return
-				case v := <-valueCh:
-					err := pub.Publish(topic, v)
+				case list := <-valueCh:
+					confValues := make([]*serverpb.ConfValue, 0, len(list))
+					for k, v := range list {
+						subkey := []byte(k)[len(Key):]
+						confValue := new(serverpb.ConfValue)
+						confValue.Key = Key
+						confValue.Subkey = string(subkey)
+						confValue.Value = string(v)
+
+						confValues = append(confValues, confValue)
+					}
+					confs := serverpb.GetConfRsp{
+						Service: req.GetService(),
+						List:    confValues,
+					}
+					v, err := proto.Marshal(&confs)
+					if err != nil {
+						logEntry.Errorf("消息序列化失败")
+						continue
+					}
+					err = pub.Publish(topic, v)
 					if err != nil {
 						return
 					}
 				}
 			}
 		}()
+	} else {
+		return nil, fmt.Errorf("KeyType Parameter error")
 	}
 	return nil, nil
 }
