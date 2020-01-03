@@ -3,7 +3,7 @@ package consul
 import (
 	"context"
 	"fmt"
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
 	"time"
 )

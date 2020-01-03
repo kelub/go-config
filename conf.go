@@ -1,7 +1,7 @@
 package go_config
 
 import (
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"kelub/go-config/consul"
 	"kelub/go-config/loader"

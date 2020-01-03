@@ -3,7 +3,7 @@ package loader
 import (
 	"context"
 	"fmt"
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/go-redis/redis"
 	"github.com/go-xorm/xorm"
 	"google.golang.org/grpc"

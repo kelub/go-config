@@ -3,7 +3,7 @@ package pubsub
 import (
 	"fmt"
 	"github.com/Shopify/sarama"
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"time"
 )
 
