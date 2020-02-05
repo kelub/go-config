@@ -12,6 +12,12 @@ var gFastWatch *FastWatch
 
 type watchHandle func(idx uint64, raw interface{})
 
+type keyValue []byte
+
+type keyPrefixValue map[string][]byte
+
+type serviceValue map[string][]byte
+
 // Watch watch 基础结构
 type Watch struct {
 	// client consul client
@@ -25,10 +31,10 @@ type Watch struct {
 	Plan *watch.Plan
 	// Handle watch 监听改变 处理器
 	Handler watchHandle
-	// KeyValueCh Key 变化值 chan
-	KeyValueCh chan []byte
-	// KeyPrefixValueCh KeyPrefix 变化值 chan
-	KeyPrefixValueCh chan map[string][]byte
+	//// KeyValueCh Key 变化值 chan
+	//KeyValueCh chan []byte
+	//// KeyPrefixValueCh KeyPrefix 变化值 chan
+	//KeyPrefixValueCh chan map[string][]byte
 
 	// stop Stop 并发安全控制
 	stop     bool
@@ -68,6 +74,66 @@ func NewKeyPrefixWatch(keyprefix string) (*Watch, error) {
 	}, nil
 }
 
+// NewServiceWatch
+func NewServiceWatch(service, tag string, passingonly bool) (*Watch, error) {
+	params := make(map[string]interface{})
+	params["type"] = "service"
+	params["service"] = "service"
+	params["tag"] = "tag"
+	params["passingonly"] = passingonly
+	plan, err := watch.Parse(params)
+	if err != nil {
+		return nil, err
+	}
+	return &Watch{
+		WatchKey: tag,
+		WatchType: "service",
+		Plan:      plan,
+	}, nil
+}
+// ServiceWatch key is tag
+func (w *Watch) ServiceWatch(done chan<- struct{}) <-chan serviceValue {
+	logEntry := logrus.WithFields(logrus.Fields{
+		"func_name": "ServiceWatch",
+		"key":       w.WatchKey,
+	})
+	logEntry.Debugln("Start ServiceWatch...")
+	if w.WatchType != "service" {
+		logEntry.Errorf("type must be service ")
+		return nil
+	}
+	valueCh := make(chan serviceValue, 1)
+	defer close(valueCh)
+	w.Plan.Handler = func(idx uint64, raw interface{}){
+		var v []*api.ServiceEntry
+		if raw == nil{
+			valueCh <- nil
+			logEntry.Debugln("value: nil")
+
+		}else{
+			var ok bool
+			if v, ok = raw.([]*api.ServiceEntry); !ok{
+				return
+			}
+			//w.Plan.IsStopped()
+			addrs := make(serviceValue, len(v))
+			for i,_ := range v{
+				addrs[w.WatchKey] = []byte(v[i].Service.Address)
+			}
+			valueCh <- addrs
+		}
+	}
+	// 运行监听循环，退出 close done chan 通知父gorutine
+	go func() {
+		defer close(done)
+		err := w.run()
+		if err != nil {
+			logEntry.Error("ServiceWatch run stop", err)
+		}
+	}()
+	return valueCh
+}
+
 // KeyWatch 运行监听 变化值由 KeyValueCh 传递
 func (w *Watch) KeyWatch(done chan<- struct{}) <-chan []byte {
 	logEntry := logrus.WithFields(logrus.Fields{
@@ -79,13 +145,13 @@ func (w *Watch) KeyWatch(done chan<- struct{}) <-chan []byte {
 		logEntry.Errorf("type must be key ")
 		return nil
 	}
-	w.KeyValueCh = make(chan []byte, 1)
-	defer close(w.KeyValueCh)
+	KeyValueCh := make(chan []byte, 1)
+	defer close(KeyValueCh)
 	w.Plan.Handler = func(idx uint64, raw interface{}) {
 		var v *api.KVPair
 		if raw == nil { // nil is a valid return value
 			//v = nil
-			w.KeyValueCh <- nil
+			KeyValueCh <- nil
 			logEntry.Debugln("value: nil")
 
 		} else {
@@ -93,7 +159,7 @@ func (w *Watch) KeyWatch(done chan<- struct{}) <-chan []byte {
 			if v, ok = raw.(*api.KVPair); !ok {
 				return
 			}
-			w.KeyValueCh <- v.Value
+			KeyValueCh <- v.Value
 			logEntry.Debugf("value: %s", v.Value)
 		}
 	}
@@ -105,7 +171,7 @@ func (w *Watch) KeyWatch(done chan<- struct{}) <-chan []byte {
 			logEntry.Error("KeyWatch run stop", err)
 		}
 	}()
-	return w.KeyValueCh
+	return KeyValueCh
 }
 
 // KeyPrefixWatch 运行监听 变化值由 KeyPrefixValueCh 传递
@@ -118,13 +184,13 @@ func (w *Watch) KeyPrefixWatch(done chan<- struct{}) <-chan map[string][]byte {
 		logEntry.Errorf("type must be keyprefix ")
 		return nil
 	}
-	w.KeyPrefixValueCh = make(chan map[string][]byte, 1)
-	defer close(w.KeyPrefixValueCh)
+	KeyPrefixValueCh := make(chan map[string][]byte, 1)
+	defer close(KeyPrefixValueCh)
 	w.Plan.Handler = func(idx uint64, raw interface{}) {
 		var v api.KVPairs
 		if raw == nil { // nil is a valid return value
 			//v = nil
-			w.KeyPrefixValueCh <- nil
+			KeyPrefixValueCh <- nil
 		} else {
 			var ok bool
 			if v, ok = raw.(api.KVPairs); !ok {
@@ -134,7 +200,7 @@ func (w *Watch) KeyPrefixWatch(done chan<- struct{}) <-chan map[string][]byte {
 			for _, pair := range v {
 				kvpairs[pair.Key] = pair.Value
 			}
-			w.KeyPrefixValueCh <- kvpairs
+			KeyPrefixValueCh <- kvpairs
 		}
 	}
 	go func() {
@@ -144,7 +210,7 @@ func (w *Watch) KeyPrefixWatch(done chan<- struct{}) <-chan map[string][]byte {
 			logEntry.Error("KeyWatch run", err)
 		}
 	}()
-	return w.KeyPrefixValueCh
+	return KeyPrefixValueCh
 }
 
 // run 运行监听 Plan
