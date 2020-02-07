@@ -3,9 +3,9 @@ package consul
 import (
 	"context"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/api/watch"
+	"github.com/sirupsen/logrus"
 	"sync"
 	"time"
 )
@@ -38,53 +38,53 @@ type watchBase struct {
 
 type KeyWatch struct {
 	// Watch
-	watch		*watchBase
+	watch *watchBase
 	// WatchKey
-	watchKey 		string
-	watchValue		[]byte
+	watchKey   string
+	watchValue []byte
 	// triggerSend trigger value to send
 	triggerSend chan struct{}
 	// updatert watch update
 	updatert time.Duration
-	syncCh 	chan []byte
+	syncCh   chan []byte
 	// mu only for watchKey
-	mu 			sync.RWMutex
+	mu sync.RWMutex
 	// cancel the KeyWatch
-	cancel 	context.CancelFunc
+	cancel context.CancelFunc
 }
 
 type KeyPrefixWatch struct {
 	// Watch
-	watch		*watchBase
+	watch *watchBase
 	// WatchKey
-	watchKey 		string
-	watchValue		map[string][]byte
+	watchKey   string
+	watchValue map[string][]byte
 	// triggerSend trigger value to send
 	triggerSend chan struct{}
 	// updatert watch update
 	updatert time.Duration
-	syncCh 	chan map[string][]byte
+	syncCh   chan map[string][]byte
 	// mu only for watchKey
-	mu 			sync.RWMutex
+	mu sync.RWMutex
 	// cancel the KeyWatch
-	cancel 	context.CancelFunc
+	cancel context.CancelFunc
 }
 
 type ServiceWatch struct {
 	// Watch
-	watch		*watchBase
+	watch *watchBase
 	// WatchKey
-	watchKey 		string
-	watchValue		map[string][]byte
+	watchKey   string
+	watchValue map[string][]byte
 	// triggerSend trigger value to send
 	triggerSend chan struct{}
 	// updatert watch update
 	updatert time.Duration
-	syncCh 	chan map[string][]byte
+	syncCh   chan map[string][]byte
 	// mu only for watchKey
-	mu 			sync.RWMutex
+	mu sync.RWMutex
 	// cancel the KeyWatch
-	cancel 	context.CancelFunc
+	cancel context.CancelFunc
 }
 
 // NewKeyWatch
@@ -99,17 +99,19 @@ func NewKeyWatch(watchKey string) (*KeyWatch, error) {
 	w := &KeyWatch{
 		watch: &watchBase{
 			WatchType: "key",
-			Plan: plan,
+			Plan:      plan,
 		},
-		triggerSend: make(chan struct{},1),
-		updatert:       5 * time.Second,
-		watchKey: watchKey,
-		watchValue: make([]byte,1),
+		syncCh:      make(chan []byte),
+		triggerSend: make(chan struct{}, 1),
+		updatert:    1 * time.Second,
+		watchKey:    watchKey,
+		watchValue:  make([]byte, 1),
 	}
 	return w, nil
 }
+
 // KeyWatch 运行监听
-func (w *KeyWatch) Run(ctx context.Context, done chan<- struct{})  {
+func (w *KeyWatch) Run(ctx context.Context, done chan<- struct{}) {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name": "KeyWatch",
 		"key":       w.watchKey,
@@ -120,7 +122,6 @@ func (w *KeyWatch) Run(ctx context.Context, done chan<- struct{})  {
 		return
 	}
 	ctx, cancel := context.WithCancel(ctx)
-
 	w.cancel = cancel
 	w.watch.Plan.Handler = func(idx uint64, raw interface{}) {
 		var v *api.KVPair
@@ -164,46 +165,52 @@ func (w *KeyWatch) Run(ctx context.Context, done chan<- struct{})  {
 	go w.sender(ctx)
 }
 
-func (w *KeyWatch) SyncCh() <-chan []byte{
+func (w *KeyWatch) SyncCh() <-chan []byte {
 	return w.syncCh
 }
 
-func (w *KeyWatch) Stop(){
-	if w.cancel != nil{
+func (w *KeyWatch) Stop() {
+	if w.cancel != nil {
 		w.cancel()
 	}
 	w.stop()
 }
 
-func (w *KeyWatch) stop(){
+func (w *KeyWatch) stop() {
 	w.watch.Stop()
 }
 
-func (w *KeyWatch) sender(ctx context.Context){
+func (w *KeyWatch) sender(ctx context.Context) {
+	logEntry := logrus.WithFields(logrus.Fields{
+		"func_name": "sender",
+	})
+	logEntry.Debugln("Start sender...")
 	ticker := time.NewTicker(w.updatert)
+	defer logEntry.Debugln("sender exit")
 	defer ticker.Stop()
 	defer close(w.syncCh)
 	for {
-		select{
+		select {
 		case <-ctx.Done():
 			w.stop()
 			return
 		case <-ticker.C:
-		select{
+			select {
 			case <-w.triggerSend:
-				select{
-					case w.syncCh <- w.watchValue:
+				select {
+				case w.syncCh <- w.watchValue:
 				default:
-					select{
+					select {
 					case w.triggerSend <- struct{}{}:
 					default:
 					}
 				}
-		default:
-		}
+			default:
+			}
 		}
 	}
 }
+
 // NewKeyWatch
 func NewKeyPrefixWatch(watchKey string) (*KeyPrefixWatch, error) {
 	params := make(map[string]interface{})
@@ -216,17 +223,19 @@ func NewKeyPrefixWatch(watchKey string) (*KeyPrefixWatch, error) {
 	w := &KeyPrefixWatch{
 		watch: &watchBase{
 			WatchType: "keyprefix",
-			Plan: plan,
+			Plan:      plan,
 		},
-		triggerSend: make(chan struct{},1),
-		updatert:       5 * time.Second,
-		watchKey: watchKey,
-		watchValue: make(map[string][]byte,1),
+		syncCh:      make(chan map[string][]byte),
+		triggerSend: make(chan struct{}, 1),
+		updatert:    5 * time.Second,
+		watchKey:    watchKey,
+		watchValue:  make(map[string][]byte, 1),
 	}
 	return w, nil
 }
+
 // KeyWatch 运行监听
-func (w *KeyPrefixWatch) Run(ctx context.Context, done chan<- struct{})  {
+func (w *KeyPrefixWatch) Run(ctx context.Context, done chan<- struct{}) {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name": "KeyPrefixWatch",
 		"key":       w.watchKey,
@@ -258,8 +267,8 @@ func (w *KeyPrefixWatch) Run(ctx context.Context, done chan<- struct{})  {
 			if v, ok = raw.(api.KVPairs); !ok {
 				return
 			}
-			temp := make(map[string][]byte,len(v))
-			for _, pair := range v{
+			temp := make(map[string][]byte, len(v))
+			for _, pair := range v {
 				temp[pair.Key] = pair.Value
 			}
 			w.mu.Lock()
@@ -285,37 +294,37 @@ func (w *KeyPrefixWatch) Run(ctx context.Context, done chan<- struct{})  {
 	go w.sender(ctx)
 }
 
-func (w *KeyPrefixWatch) SyncCh() <-chan map[string][]byte{
+func (w *KeyPrefixWatch) SyncCh() <-chan map[string][]byte {
 	return w.syncCh
 }
 
-func (w *KeyPrefixWatch) Stop(){
-	if w.cancel != nil{
+func (w *KeyPrefixWatch) Stop() {
+	if w.cancel != nil {
 		w.cancel()
 	}
 	w.stop()
 }
 
-func (w *KeyPrefixWatch) stop(){
+func (w *KeyPrefixWatch) stop() {
 	w.watch.Stop()
 }
 
-func (w *KeyPrefixWatch) sender(ctx context.Context){
+func (w *KeyPrefixWatch) sender(ctx context.Context) {
 	ticker := time.NewTicker(w.updatert)
 	defer ticker.Stop()
 	defer close(w.syncCh)
 	for {
-		select{
+		select {
 		case <-ctx.Done():
 			w.stop()
 			return
 		case <-ticker.C:
-			select{
+			select {
 			case <-w.triggerSend:
-				select{
+				select {
 				case w.syncCh <- w.watchValue:
 				default:
-					select{
+					select {
 					case w.triggerSend <- struct{}{}:
 					default:
 					}
@@ -338,17 +347,19 @@ func NewServiceWatch(watchKey string) (*ServiceWatch, error) {
 	w := &ServiceWatch{
 		watch: &watchBase{
 			WatchType: "services",
-			Plan: plan,
+			Plan:      plan,
 		},
-		triggerSend: make(chan struct{},1),
-		updatert:       5 * time.Second,
-		watchKey: watchKey,
-		watchValue: make(map[string][]byte,1),
+		syncCh:      make(chan map[string][]byte),
+		triggerSend: make(chan struct{}, 1),
+		updatert:    5 * time.Second,
+		watchKey:    watchKey,
+		watchValue:  make(map[string][]byte, 1),
 	}
 	return w, nil
 }
+
 // KeyWatch 运行监听
-func (w *ServiceWatch) Run(ctx context.Context, done chan<- struct{})  {
+func (w *ServiceWatch) Run(ctx context.Context, done chan<- struct{}) {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name": "KeyWatch",
 		"key":       w.watchKey,
@@ -381,7 +392,7 @@ func (w *ServiceWatch) Run(ctx context.Context, done chan<- struct{})  {
 				return
 			}
 			temp := make(map[string][]byte, 1)
-			for _,serviceEntry := range v{
+			for _, serviceEntry := range v {
 				temp[serviceEntry.Service.Service] = []byte(serviceEntry.Service.Address)
 			}
 			w.mu.Lock()
@@ -407,37 +418,37 @@ func (w *ServiceWatch) Run(ctx context.Context, done chan<- struct{})  {
 	go w.sender(ctx)
 }
 
-func (w *ServiceWatch) SyncCh() <-chan map[string][]byte{
+func (w *ServiceWatch) SyncCh() <-chan map[string][]byte {
 	return w.syncCh
 }
 
-func (w *ServiceWatch) Stop(){
-	if w.cancel != nil{
+func (w *ServiceWatch) Stop() {
+	if w.cancel != nil {
 		w.cancel()
 	}
 	w.stop()
 }
 
-func (w *ServiceWatch) stop(){
+func (w *ServiceWatch) stop() {
 	w.watch.Stop()
 }
 
-func (w *ServiceWatch) sender(ctx context.Context){
+func (w *ServiceWatch) sender(ctx context.Context) {
 	ticker := time.NewTicker(w.updatert)
 	defer ticker.Stop()
 	defer close(w.syncCh)
 	for {
-		select{
+		select {
 		case <-ctx.Done():
 			w.stop()
 			return
 		case <-ticker.C:
-			select{
+			select {
 			case <-w.triggerSend:
-				select{
+				select {
 				case w.syncCh <- w.watchValue:
 				default:
-					select{
+					select {
 					case w.triggerSend <- struct{}{}:
 					default:
 					}
@@ -463,7 +474,7 @@ func (w *watchBase) Run() error {
 func (w *watchBase) Stop() {
 	w.stopLock.Lock()
 	defer w.stopLock.Unlock()
-	if w.stop || w.Plan.IsStopped(){
+	if w.stop || w.Plan.IsStopped() {
 		return
 	} else {
 		w.Plan.Stop()
@@ -473,7 +484,7 @@ func (w *watchBase) Stop() {
 
 // 全局 FastWatch 控制
 type FastWatch struct {
-	KeyWatchMap sync.Map // key: *KeyWatch
+	KeyWatchMap       sync.Map // key: *KeyWatch
 	KeyPrefixWatchMap sync.Map // key: *KeyPrefixWatch
 }
 
