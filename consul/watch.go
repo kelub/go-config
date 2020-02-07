@@ -26,19 +26,11 @@ type watchBase struct {
 	client api.Client
 	// WatchType
 	WatchType string
-
 	// Plan watch plan
 	Plan *watch.Plan
 	// Handle watch 监听改变 处理器
 	Handler watchHandle
-	//// KeyValueCh Key 变化值 chan
-	//KeyValueCh chan []byte
-	//// KeyPrefixValueCh KeyPrefix 变化值 chan
-	//KeyPrefixValueCh chan map[string][]byte
-
-	//[]byte		[]byte
-	//keyPrefixValue 	map[string][]byte
-	// stop Stop 并发安全控制
+	// stop 并发安全控制
 	stop     bool
 	stopCh   chan struct{}
 	stopLock sync.Mutex
@@ -83,12 +75,12 @@ type ServiceWatch struct {
 	watch		*watchBase
 	// WatchKey
 	watchKey 		string
-	watchValue		serviceValue
+	watchValue		map[string][]byte
 	// triggerSend trigger value to send
 	triggerSend chan struct{}
 	// updatert watch update
 	updatert time.Duration
-	syncCh 	chan serviceValue
+	syncCh 	chan map[string][]byte
 	// mu only for watchKey
 	mu 			sync.RWMutex
 	// cancel the KeyWatch
@@ -334,6 +326,128 @@ func (w *KeyPrefixWatch) sender(ctx context.Context){
 	}
 }
 
+// NewServiceWatch
+func NewServiceWatch(watchKey string) (*ServiceWatch, error) {
+	params := make(map[string]interface{})
+	params["type"] = "services"
+	params["key"] = watchKey
+	plan, err := watch.Parse(params)
+	if err != nil {
+		return nil, err
+	}
+	w := &ServiceWatch{
+		watch: &watchBase{
+			WatchType: "services",
+			Plan: plan,
+		},
+		triggerSend: make(chan struct{},1),
+		updatert:       5 * time.Second,
+		watchKey: watchKey,
+		watchValue: make(map[string][]byte,1),
+	}
+	return w, nil
+}
+// KeyWatch 运行监听
+func (w *ServiceWatch) Run(ctx context.Context, done chan<- struct{})  {
+	logEntry := logrus.WithFields(logrus.Fields{
+		"func_name": "KeyWatch",
+		"key":       w.watchKey,
+	})
+	logEntry.Debugln("Start KeyWatch...")
+	if w.watch.WatchType != "services" {
+		logEntry.Errorf("type must be key ")
+		return
+	}
+	ctx, cancel := context.WithCancel(ctx)
+
+	w.cancel = cancel
+	w.watch.Plan.Handler = func(idx uint64, raw interface{}) {
+		var v []*api.ServiceEntry
+		if raw == nil { // nil is a valid return value
+			//v = nil
+			w.mu.Lock()
+			w.watchValue = nil
+			w.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				return
+			case w.triggerSend <- struct{}{}:
+			default:
+			}
+			logEntry.Debugln("value: nil")
+		} else {
+			var ok bool
+			if v, ok = raw.([]*api.ServiceEntry); !ok {
+				return
+			}
+			temp := make(map[string][]byte, 1)
+			for _,serviceEntry := range v{
+				temp[serviceEntry.Service.Service] = []byte(serviceEntry.Service.Address)
+			}
+			w.mu.Lock()
+			w.watchValue = temp
+			w.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				return
+			case w.triggerSend <- struct{}{}:
+			default:
+			}
+			logEntry.Debugf("value: %s", temp)
+		}
+	}
+	// 运行监听循环，退出 close done chan 通知父gorutine
+	go func() {
+		defer close(done)
+		err := w.watch.Run()
+		if err != nil {
+			logEntry.Error("KeyWatch run stop", err)
+		}
+	}()
+	go w.sender(ctx)
+}
+
+func (w *ServiceWatch) SyncCh() <-chan map[string][]byte{
+	return w.syncCh
+}
+
+func (w *ServiceWatch) Stop(){
+	if w.cancel != nil{
+		w.cancel()
+	}
+	w.stop()
+}
+
+func (w *ServiceWatch) stop(){
+	w.watch.Stop()
+}
+
+func (w *ServiceWatch) sender(ctx context.Context){
+	ticker := time.NewTicker(w.updatert)
+	defer ticker.Stop()
+	defer close(w.syncCh)
+	for {
+		select{
+		case <-ctx.Done():
+			w.stop()
+			return
+		case <-ticker.C:
+			select{
+			case <-w.triggerSend:
+				select{
+				case w.syncCh <- w.watchValue:
+				default:
+					select{
+					case w.triggerSend <- struct{}{}:
+					default:
+					}
+				}
+			default:
+			}
+		}
+	}
+}
+
 // run 运行监听 Plan
 func (w *watchBase) Run() error {
 	err := w.Plan.Run(consulAddr)
@@ -359,7 +473,8 @@ func (w *watchBase) Stop() {
 
 // 全局 FastWatch 控制
 type FastWatch struct {
-	WatchMap sync.Map // key: *plan
+	KeyWatchMap sync.Map // key: *KeyWatch
+	KeyPrefixWatchMap sync.Map // key: *KeyPrefixWatch
 }
 
 func CreateFastWatch() *FastWatch {
@@ -375,7 +490,7 @@ func GetFastWatch() *FastWatch {
 // done 通知父 goruntine Watch 循环退出。
 // goruntine safe
 func (fw *FastWatch) KeyWatch(done chan<- struct{}, key string) (value <-chan []byte, err error) {
-	_, ok := fw.WatchMap.Load(key)
+	_, ok := fw.KeyWatchMap.Load(key)
 	if ok {
 		return nil, fmt.Errorf("has exist key watch key: %s", key)
 	}
@@ -383,7 +498,7 @@ func (fw *FastWatch) KeyWatch(done chan<- struct{}, key string) (value <-chan []
 	if err != nil {
 		return nil, err
 	}
-	fw.WatchMap.Store(key, w)
+	fw.KeyWatchMap.Store(key, w)
 	go w.Run(context.TODO(), done)
 	value = w.SyncCh()
 	return value, nil
@@ -393,7 +508,7 @@ func (fw *FastWatch) KeyWatch(done chan<- struct{}, key string) (value <-chan []
 // done 通知父 goruntine Watch 循环退出。
 // goruntine safe
 func (fw *FastWatch) KeyPrefixWatch(done chan<- struct{}, key string) (value <-chan map[string][]byte, err error) {
-	_, ok := fw.WatchMap.Load(key)
+	_, ok := fw.KeyPrefixWatchMap.Load(key)
 	if ok {
 		return nil, fmt.Errorf("has exist key watch key: %s", key)
 	}
@@ -401,13 +516,8 @@ func (fw *FastWatch) KeyPrefixWatch(done chan<- struct{}, key string) (value <-c
 	if err != nil {
 		return nil, err
 	}
-	fw.WatchMap.Store(key, w)
+	fw.KeyPrefixWatchMap.Store(key, w)
 	go w.Run(context.TODO(), done)
 	value = w.SyncCh()
 	return value, nil
-}
-
-// Delete
-func (fw *FastWatch) Delete(key string) {
-	fw.WatchMap.Delete(key)
 }
